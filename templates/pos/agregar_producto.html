@@ -1,0 +1,71 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white text-center">
+                    <h4><i class="bi bi-box-seam"></i> Nuevo Producto</h4>
+                </div>
+                <div class="card-body">
+                    <div class="text-center mb-3">
+                        <button class="btn btn-secondary w-100 mb-2" onclick="iniciarEscaner()">
+                            <i class="bi bi-upc-scan"></i> Escanear Código de Barras
+                        </button>
+                        <div id="reader" style="display:none;"></div>
+                    </div>
+
+                    <form method="POST">
+                        {% csrf_token %}
+                        {% for field in form %}
+                            <div class="mb-3">
+                                <label class="form-label">{{ field.label }}</label>
+                                {{ field }}
+                            </div>
+                        {% endfor %}
+                        <button type="submit" class="btn btn-success w-100 btn-lg">
+                            <i class="bi bi-save"></i> Guardar Producto
+                        </button>
+                    </form>
+                </div>
+            </div>
+            <a href="{% url 'pos' %}" class="btn btn-link w-100 mt-2 text-decoration-none text-muted">Volver al POS</a>
+        </div>
+    </div>
+</div>
+
+{% if messages %}
+    {% for message in messages %}
+        <div style="color: green; font-weight: bold;">
+            {{ message }}
+        </div>
+    {% endfor %}
+{% endif %}
+
+<h2>Agregar Nuevo Producto</h2>
+
+<form method="post">
+    {% csrf_token %} {{ form.as_p }} <button type="submit">Guardar Producto</button>
+</form>
+
+<br>
+<a href="{% url 'pos' %}">Volver al Punto de Venta</a>
+<script src="https://unpkg.com/html5-qrcode"></script>
+<script>
+    function iniciarEscaner() {
+        const reader = document.getElementById('reader');
+        reader.style.display = 'block';
+        
+        const scanner = new Html5QrcodeScanner("reader", { fps: 15, qrbox: 250 });
+        
+        scanner.render((text) => {
+            document.getElementById('id_codigo_barras').value = text;
+            scanner.clear();
+            reader.style.display = 'none';
+            // Alertamos al usuario que se leyó bien
+            const audio = new Audio('https://www.soundjay.com/buttons/beep-07.mp3');
+            audio.play();
+        });
+    }
+</script>
+{% endblock %}

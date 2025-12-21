@@ -1,0 +1,246 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card shadow-sm mb-3">
+            <div class="card-body">
+                <form id="search-form" method="GET" class="input-group">
+                    <input type="text" id="codigo_input" name="q" class="form-control" placeholder="Escanear o buscar..." autofocus>
+                    <button class="btn btn-secondary" type="button" onclick="iniciarEscaner()"><i class="bi bi-camera"></i></button>
+                    <button class="btn btn-primary" type="submit">Buscar</button>
+                </form>
+                <div id="reader" style="display:none; margin-top:10px;"></div>
+            </div>
+        </div>
+
+        <div class="row row-cols-2 row-cols-md-4 g-2">
+            {% for p in productos %}
+            <div class="col">
+                <div class="card h-100 border-0 shadow-sm">
+                    <div class="card-body text-center p-2">
+                        <small class="d-block text-truncate">{{ p.nombre }}</small>
+                        <strong class="text-primary">${{ p.precio }}</strong><br>
+                        <small class="text-muted">Stock: {{ p.stock }}</small>
+<button class="btn btn-sm btn-primary w-100 mt-1" onclick="agregar('{{ p.nombre }}', '{{ p.precio }}')">+</button>                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card shadow-lg">
+            <div class="card-header bg-dark text-white text-center">TICKET</div>
+            <div class="card-body p-0" style="height: 400px; overflow-y: auto;">
+                <table class="table table-sm" id="tabla-ticket">
+                    <thead><tr><th>Prod</th><th>Cant</th><th>Sub</th><th></th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+            <div class="card-footer bg-light">
+                <h3 class="text-center">Total: <span id="total-text">$0.00</span></h3>
+                <button class="btn btn-success btn-lg w-100" onclick="finalizarVenta()">COBRAR</button>
+                <button class="btn btn-link text-danger w-100" onclick="vaciarCarrito()">Vaciar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://unpkg.com/html5-qrcode"></script>
+<script>
+    // Usamos una clave única para el localStorage
+    const KEY = 'pos_tienda_v1';
+    let carrito = [];
+    let scannerInstance = null;
+
+    // Función para cargar el carrito desde localStorage con manejo de errores
+    function cargarCarrito() {
+        try {
+            const data = localStorage.getItem(KEY);
+            carrito = data ? JSON.parse(data) : [];
+        } catch (error) {
+            console.error('Error al cargar carrito:', error);
+            carrito = [];
+        }
+    }
+
+    // Función para guardar el carrito en localStorage con manejo de errores
+    function guardarCarrito() {
+        try {
+            localStorage.setItem(KEY, JSON.stringify(carrito));
+        } catch (error) {
+            console.error('Error al guardar carrito:', error);
+            alert('No se pudo guardar el carrito. Verifique el espacio disponible.');
+        }
+    }
+
+    function agregar(nombre, precio, stock) {
+        let item = carrito.find(p => p.nombre === nombre);
+        
+        if (item) {
+            // Validar que no exceda el stock
+            if (item.cantidad >= stock) {
+                alert(`No hay suficiente stock. Disponible: ${stock}`);
+                return;
+            }
+            item.cantidad++;
+        } else {
+            // Validar stock antes de agregar
+            if (stock <= 0) {
+                alert('Producto sin stock disponible');
+                return;
+            }
+            carrito.push({ nombre: nombre, precio: parseFloat(precio), cantidad: 1, stock: stock });
+        }
+        actualizar();
+    }
+
+    function eliminar(index) {
+        if (confirm('¿Eliminar este producto del carrito?')) {
+            carrito.splice(index, 1);
+            actualizar();
+        }
+    }
+
+    function vaciarCarrito() {
+        if (carrito.length === 0) {
+            alert('El carrito ya está vacío');
+            return;
+        }
+        
+        if (confirm('¿Seguro que deseas vaciar el carrito?')) {
+            carrito = [];
+            actualizar();
+        }
+    }
+
+    function actualizar() {
+        guardarCarrito();
+        const tabla = document.querySelector('#tabla-ticket tbody');
+        let html = '';
+        let total = 0;
+
+        carrito.forEach((p, i) => {
+            let sub = p.precio * p.cantidad;
+            total += sub;
+            html += `
+                <tr>
+                    <td>${p.nombre}</td>
+                    <td class="text-center">${p.cantidad}</td>
+                    <td class="text-end">$${sub.toFixed(2)}</td>
+                    <td class="text-danger text-center" style="cursor:pointer" onclick="eliminar(${i})">
+                        <i class="bi bi-x-circle"></i>
+                    </td>
+                </tr>`;
+        });
+
+        tabla.innerHTML = html;
+        document.querySelector('#total-text').innerText = `$${total.toFixed(2)}`;
+    }
+
+    async function finalizarVenta() {
+        if (carrito.length === 0) {
+            alert("El carrito está vacío");
+            return;
+        }
+
+        const total = carrito.reduce((sum, p) => sum + (p.precio * p.cantidad), 0);
+
+        // Confirmar venta
+        if (!confirm(`¿Confirmar venta por $${total.toFixed(2)}?`)) {
+            return;
+        }
+
+        try {
+            const response = await fetch("{% url 'procesar_venta' %}", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: JSON.stringify({
+                    carrito: carrito,
+                    total: total
+                })
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                alert("¡Venta realizada con éxito!");
+                carrito = [];
+                try {
+                    localStorage.removeItem(KEY);
+                } catch (e) {
+                    console.error('Error al limpiar localStorage:', e);
+                }
+                location.reload(); // Recargamos para ver el stock actualizado
+            } else {
+                alert("Error: " + (result.message || 'No se pudo procesar la venta'));
+            }
+        } catch (error) {
+            console.error('Error en finalizarVenta:', error);
+            alert("Error de conexión con el servidor. Verifique su conexión.");
+        }
+    }
+
+    // Escáner con manejo de errores mejorado
+    function iniciarEscaner() {
+        const reader = document.getElementById('reader');
+        
+        if (scannerInstance) {
+            // Si ya hay un escáner activo, lo detenemos
+            detenerEscaner();
+            return;
+        }
+        
+        reader.style.display = 'block';
+        
+        scannerInstance = new Html5QrcodeScanner(
+            "reader", 
+            { 
+                fps: 10, 
+                qrbox: 250,
+                aspectRatio: 1.0
+            }
+        );
+
+        scannerInstance.render(
+            // Función de éxito
+            (decodedText) => {
+                document.getElementById('codigo_input').value = decodedText;
+                detenerEscaner();
+                document.getElementById('search-form').submit();
+            },
+            // Función de error (opcional, evita llenar la consola)
+            (error) => {
+                // No hacer nada, es normal que haya errores mientras escanea
+            }
+        );
+    }
+
+    function detenerEscaner() {
+        if (scannerInstance) {
+            scannerInstance.clear().catch(error => {
+                console.error('Error al limpiar escáner:', error);
+            });
+            scannerInstance = null;
+            document.getElementById('reader').style.display = 'none';
+        }
+    }
+
+    // Inicializar al cargar la página
+    document.addEventListener('DOMContentLoaded', () => {
+        cargarCarrito();
+        actualizar();
+    });
+
+    // Sincronizar carrito entre pestañas
+    window.addEventListener('storage', (e) => {
+        if (e.key === KEY) {
+            cargarCarrito();
+            actualizar();
+        }
+    });
+</script>
+{% endblock %}
