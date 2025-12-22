@@ -1,14 +1,44 @@
+from django.shortcuts import render
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 import json
 from .models import Venta, DetalleVenta
 from inventario.models import Producto
-from .whatsapp import enviar_whatsapp_venta  # ⬅️ IMPORTAR
+from .whatsapp import enviar_whatsapp_venta
+
+
+def punto_de_venta(request):
+    """
+    Vista principal del punto de venta
+    """
+    query = request.GET.get('q', '')
+    
+    if query:
+        # Buscar productos por código o nombre
+        productos = Producto.objects.filter(
+            nombre__icontains=query
+        ) | Producto.objects.filter(
+            codigo__icontains=query
+        )
+    else:
+        # Mostrar todos los productos
+        productos = Producto.objects.all()
+    
+    context = {
+        'productos': productos,
+        'query': query
+    }
+    
+    return render(request, 'pos.html', context)
+
 
 @csrf_exempt
 @require_http_methods(["POST"])
 def procesar_venta(request):
+    """
+    Procesa una venta y envía notificación por WhatsApp
+    """
     try:
         data = json.loads(request.body)
         carrito = data.get('carrito', [])
