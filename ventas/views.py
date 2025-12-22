@@ -1,49 +1,57 @@
-import json
-from django.shortcuts import render
 from django.http import JsonResponse
-from django.db import transaction
-from inventario.models import Producto
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_http_methods
+import json
 from .models import Venta, DetalleVenta
-from django.views.decorators.csrf import csrf_protect
+from inventario.models import Producto
+from .whatsapp import enviar_whatsapp_venta  # ⬅️ IMPORTAR
 
-def punto_de_venta(request):
-    busqueda = request.GET.get('q', '')
-    if busqueda:
-        productos = Producto.objects.filter(nombre__icontains=busqueda) | Producto.objects.filter(codigo_barras__icontains=busqueda)
-    else:
-        productos = Producto.objects.all()[:12]
-    return render(request, 'pos/index.html', {'productos': productos, 'busqueda': busqueda})
-
-@csrf_protect
+@csrf_exempt
+@require_http_methods(["POST"])
 def procesar_venta(request):
-    if request.method == 'POST':
-        try:
-            data = json.loads(request.body)
-            carrito = data.get('carrito')
-            total_venta = data.get('total')
+    try:
+        data = json.loads(request.body)
+        carrito = data.get('carrito', [])
+        total = data.get('total', 0)
 
-            with transaction.atomic():
-                # 1. Crear la venta
-                nueva_venta = Venta.objects.create(total=total_venta)
-                
-                # 2. Crear los detalles
-                for item in carrito:
-                    # Buscamos el producto (es mejor por nombre o ID)
-                    producto = Producto.objects.get(nombre=item['nombre'])
-                    
-                    DetalleVenta.objects.create(
-                        venta=nueva_venta,
-                        producto=producto,
-                        cantidad=item['cantidad'],
-                        precio_unitario=item['precio']
-                    )
-                    
-                    # 3. Descontar stock
-                    producto.stock -= int(item['cantidad'])
-                    producto.save()
+        if not carrito:
+            return JsonResponse({'message': 'Carrito vacío'}, status=400)
 
-            return JsonResponse({'status': 'ok', 'venta_id': nueva_venta.id})
-        except Exception as e:
-            print(f"ERROR EN VENTA: {e}") # Esto saldrá en tu terminal de VS Code
-            return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
-    return JsonResponse({'status': 'error'}, status=405)
+        # Crear la venta
+        venta = Venta.objects.create(total=total)
+
+        # Procesar cada producto
+        for item in carrito:
+            producto = Producto.objects.get(nombre=item['nombre'])
+            
+            # Validar stock
+            if producto.stock < item['cantidad']:
+                venta.delete()
+                return JsonResponse({
+                    'message': f'Stock insuficiente para {producto.nombre}'
+                }, status=400)
+            
+            # Reducir stock
+            producto.stock -= item['cantidad']
+            producto.save()
+            
+            # Crear detalle de venta
+            DetalleVenta.objects.create(
+                venta=venta,
+                producto=producto,
+                cantidad=item['cantidad'],
+                precio_unitario=item['precio']
+            )
+
+        # 🔥 ENVIAR WHATSAPP
+        enviar_whatsapp_venta(venta, carrito)
+
+        return JsonResponse({
+            'message': 'Venta realizada con éxito',
+            'venta_id': venta.id
+        }, status=200)
+
+    except Producto.DoesNotExist:
+        return JsonResponse({'message': 'Producto no encontrado'}, status=404)
+    except Exception as e:
+        return JsonResponse({'message': str(e)}, status=500)
