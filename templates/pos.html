@@ -21,7 +21,10 @@
                         <small class="d-block text-truncate">{{ p.nombre }}</small>
                         <strong class="text-primary">${{ p.precio }}</strong><br>
                         <small class="text-muted">Stock: {{ p.stock }}</small>
-<button class="btn btn-sm btn-primary w-100 mt-1" onclick="agregar('{{ p.nombre }}', '{{ p.precio }}')">+</button>                    </div>
+                        <button class="btn btn-sm btn-primary w-100 mt-1" onclick="agregar('{{ p.nombre }}', '{{ p.precio }}', {{ p.stock }})">
+                            <i class="bi bi-cart-plus"></i> Agregar
+                        </button>
+                    </div>
                 </div>
             </div>
             {% endfor %}
@@ -30,17 +33,30 @@
 
     <div class="col-lg-4">
         <div class="card shadow-lg">
-            <div class="card-header bg-dark text-white text-center">TICKET</div>
+            <div class="card-header bg-dark text-white text-center">
+                <i class="bi bi-receipt"></i> TICKET
+            </div>
             <div class="card-body p-0" style="height: 400px; overflow-y: auto;">
-                <table class="table table-sm" id="tabla-ticket">
-                    <thead><tr><th>Prod</th><th>Cant</th><th>Sub</th><th></th></tr></thead>
+                <table class="table table-sm mb-0" id="tabla-ticket">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Producto</th>
+                            <th class="text-center" style="width: 120px;">Cantidad</th>
+                            <th class="text-end">Subtotal</th>
+                            <th style="width: 40px;"></th>
+                        </tr>
+                    </thead>
                     <tbody></tbody>
                 </table>
             </div>
             <div class="card-footer bg-light">
-                <h3 class="text-center">Total: <span id="total-text">$0.00</span></h3>
-                <button class="btn btn-success btn-lg w-100" onclick="finalizarVenta()">COBRAR</button>
-                <button class="btn btn-link text-danger w-100" onclick="vaciarCarrito()">Vaciar</button>
+                <h3 class="text-center mb-3">Total: <span id="total-text" class="text-success">$0.00</span></h3>
+                <button class="btn btn-success btn-lg w-100 mb-2" onclick="finalizarVenta()">
+                    <i class="bi bi-cash-coin"></i> COBRAR
+                </button>
+                <button class="btn btn-link text-danger w-100" onclick="vaciarCarrito()">
+                    <i class="bi bi-trash"></i> Vaciar Carrito
+                </button>
             </div>
         </div>
     </div>
@@ -48,12 +64,10 @@
 
 <script src="https://unpkg.com/html5-qrcode"></script>
 <script>
-    // Usamos una clave única para el localStorage
     const KEY = 'pos_tienda_v1';
     let carrito = [];
     let scannerInstance = null;
 
-    // Función para cargar el carrito desde localStorage con manejo de errores
     function cargarCarrito() {
         try {
             const data = localStorage.getItem(KEY);
@@ -64,7 +78,6 @@
         }
     }
 
-    // Función para guardar el carrito en localStorage con manejo de errores
     function guardarCarrito() {
         try {
             localStorage.setItem(KEY, JSON.stringify(carrito));
@@ -78,14 +91,12 @@
         let item = carrito.find(p => p.nombre === nombre);
         
         if (item) {
-            // Validar que no exceda el stock
             if (item.cantidad >= stock) {
                 alert(`No hay suficiente stock. Disponible: ${stock}`);
                 return;
             }
             item.cantidad++;
         } else {
-            // Validar stock antes de agregar
             if (stock <= 0) {
                 alert('Producto sin stock disponible');
                 return;
@@ -93,6 +104,26 @@
             carrito.push({ nombre: nombre, precio: parseFloat(precio), cantidad: 1, stock: stock });
         }
         actualizar();
+    }
+
+    function incrementar(index) {
+        const item = carrito[index];
+        if (item.cantidad >= item.stock) {
+            alert(`Stock máximo alcanzado: ${item.stock}`);
+            return;
+        }
+        item.cantidad++;
+        actualizar();
+    }
+
+    function decrementar(index) {
+        const item = carrito[index];
+        if (item.cantidad > 1) {
+            item.cantidad--;
+            actualizar();
+        } else {
+            eliminar(index);
+        }
     }
 
     function eliminar(index) {
@@ -120,19 +151,50 @@
         let html = '';
         let total = 0;
 
-        carrito.forEach((p, i) => {
-            let sub = p.precio * p.cantidad;
-            total += sub;
-            html += `
+        if (carrito.length === 0) {
+            html = `
                 <tr>
-                    <td>${p.nombre}</td>
-                    <td class="text-center">${p.cantidad}</td>
-                    <td class="text-end">$${sub.toFixed(2)}</td>
-                    <td class="text-danger text-center" style="cursor:pointer" onclick="eliminar(${i})">
-                        <i class="bi bi-x-circle"></i>
+                    <td colspan="4" class="text-center text-muted py-4">
+                        <i class="bi bi-cart-x" style="font-size: 2rem;"></i>
+                        <p class="mb-0 mt-2">Carrito vacío</p>
                     </td>
                 </tr>`;
-        });
+        } else {
+            carrito.forEach((p, i) => {
+                let sub = p.precio * p.cantidad;
+                total += sub;
+                html += `
+                    <tr>
+                        <td>
+                            <small class="d-block text-truncate" style="max-width: 100px;" title="${p.nombre}">
+                                ${p.nombre}
+                            </small>
+                            <small class="text-muted">$${p.precio.toFixed(2)} c/u</small>
+                        </td>
+                        <td class="text-center">
+                            <div class="btn-group btn-group-sm" role="group">
+                                <button type="button" class="btn btn-outline-danger" onclick="decrementar(${i})" title="Disminuir">
+                                    <i class="bi bi-dash"></i>
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary" disabled style="min-width: 40px;">
+                                    <strong>${p.cantidad}</strong>
+                                </button>
+                                <button type="button" class="btn btn-outline-success" onclick="incrementar(${i})" title="Aumentar">
+                                    <i class="bi bi-plus"></i>
+                                </button>
+                            </div>
+                        </td>
+                        <td class="text-end">
+                            <strong>$${sub.toFixed(2)}</strong>
+                        </td>
+                        <td class="text-center">
+                            <button class="btn btn-sm btn-link text-danger p-0" onclick="eliminar(${i})" title="Eliminar">
+                                <i class="bi bi-x-circle-fill"></i>
+                            </button>
+                        </td>
+                    </tr>`;
+            });
+        }
 
         tabla.innerHTML = html;
         document.querySelector('#total-text').innerText = `$${total.toFixed(2)}`;
@@ -146,7 +208,6 @@
 
         const total = carrito.reduce((sum, p) => sum + (p.precio * p.cantidad), 0);
 
-        // Confirmar venta
         if (!confirm(`¿Confirmar venta por $${total.toFixed(2)}?`)) {
             return;
         }
@@ -174,7 +235,7 @@
                 } catch (e) {
                     console.error('Error al limpiar localStorage:', e);
                 }
-                location.reload(); // Recargamos para ver el stock actualizado
+                location.reload();
             } else {
                 alert("Error: " + (result.message || 'No se pudo procesar la venta'));
             }
@@ -184,12 +245,10 @@
         }
     }
 
-    // Escáner con manejo de errores mejorado
     function iniciarEscaner() {
         const reader = document.getElementById('reader');
         
         if (scannerInstance) {
-            // Si ya hay un escáner activo, lo detenemos
             detenerEscaner();
             return;
         }
@@ -206,16 +265,12 @@
         );
 
         scannerInstance.render(
-            // Función de éxito
             (decodedText) => {
                 document.getElementById('codigo_input').value = decodedText;
                 detenerEscaner();
                 document.getElementById('search-form').submit();
             },
-            // Función de error (opcional, evita llenar la consola)
-            (error) => {
-                // No hacer nada, es normal que haya errores mientras escanea
-            }
+            (error) => {}
         );
     }
 
@@ -229,13 +284,11 @@
         }
     }
 
-    // Inicializar al cargar la página
     document.addEventListener('DOMContentLoaded', () => {
         cargarCarrito();
         actualizar();
     });
 
-    // Sincronizar carrito entre pestañas
     window.addEventListener('storage', (e) => {
         if (e.key === KEY) {
             cargarCarrito();
@@ -243,4 +296,23 @@
         }
     });
 </script>
+
+<style>
+    .btn-group-sm .btn {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.875rem;
+    }
+    
+    .table-sm td {
+        vertical-align: middle;
+    }
+    
+    #tabla-ticket tbody tr {
+        transition: background-color 0.2s ease;
+    }
+    
+    #tabla-ticket tbody tr:hover {
+        background-color: #f8f9fa;
+    }
+</style>
 {% endblock %}

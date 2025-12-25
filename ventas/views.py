@@ -15,11 +15,11 @@ def punto_de_venta(request):
     query = request.GET.get('q', '')
     
     if query:
-        # Buscar productos por código o nombre
+        # Buscar productos por código de barras o nombre
         productos = Producto.objects.filter(
             nombre__icontains=query
         ) | Producto.objects.filter(
-            codigo__icontains=query
+            codigo_barras__icontains=query  # ← CAMBIO 1: 'codigo' → 'codigo_barras'
         )
     else:
         # Mostrar todos los productos
@@ -30,7 +30,7 @@ def punto_de_venta(request):
         'query': query
     }
     
-    return render(request, 'pos.html', context)
+    return render(request, 'pos.html', context)  # ← CAMBIO 2: 'pos.html' → 'pos/index.html'
 
 
 @csrf_exempt
@@ -73,8 +73,12 @@ def procesar_venta(request):
                 precio_unitario=item['precio']
             )
 
-        # 🔥 ENVIAR WHATSAPP
-        enviar_whatsapp_venta(venta, carrito)
+        # 🔥 ENVIAR WHATSAPP (con manejo de errores)
+        try:
+            enviar_whatsapp_venta(venta, carrito)
+        except Exception as whatsapp_error:
+            print(f"Error al enviar WhatsApp: {whatsapp_error}")
+            # No falla la venta si WhatsApp falla
 
         return JsonResponse({
             'message': 'Venta realizada con éxito',
