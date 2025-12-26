@@ -1,0 +1,304 @@
+{% extends 'base.html' %}
+{% block content %}
+<style>
+    .stat-card {
+        background: white;
+        border-radius: 15px;
+        padding: 1.5rem;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        transition: transform 0.2s;
+    }
+    .stat-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 12px rgba(0,0,0,0.15);
+    }
+    .stat-value {
+        font-size: 2.5rem;
+        font-weight: bold;
+        color: #667eea;
+    }
+    .stat-label {
+        color: #6b7280;
+        font-size: 0.9rem;
+        margin-bottom: 0.5rem;
+    }
+    .trend-up { color: #10b981; }
+    .trend-down { color: #ef4444; }
+    .chart-container {
+        background: white;
+        border-radius: 15px;
+        padding: 1.5rem;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        margin-top: 1.5rem;
+    }
+    .product-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1rem;
+        border-bottom: 1px solid #e5e7eb;
+        transition: background 0.2s;
+    }
+    .product-row:hover {
+        background: #f9fafb;
+    }
+    .loading {
+        text-align: center;
+        padding: 3rem;
+        font-size: 1.2rem;
+        color: #6b7280;
+    }
+</style>
+
+<div class="container-fluid p-4" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh;">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div class="text-white">
+                    <h1 class="display-4 mb-2">📊 Dashboard de Ventas</h1>
+                    <p class="mb-0" id="fecha-actual"></p>
+                </div>
+                <button onclick="cargarDatos()" class="btn btn-light btn-lg">
+                    <i class="bi bi-arrow-clockwise"></i> Actualizar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading -->
+    <div id="loading" class="text-white text-center">
+        <div class="spinner-border mb-3" role="status" style="width: 3rem; height: 3rem;">
+            <span class="visually-hidden">Cargando...</span>
+        </div>
+        <h3>Cargando datos del dashboard...</h3>
+    </div>
+
+    <!-- Error -->
+    <div id="error" style="display: none;" class="alert alert-danger"></div>
+
+    <!-- Dashboard Content -->
+    <div id="dashboard-content" style="display: none;">
+        <!-- Stats Cards -->
+        <div class="row g-4 mb-4">
+            <div class="col-md-3">
+                <div class="stat-card">
+                    <div class="stat-label">💰 Total Ventas Hoy</div>
+                    <div class="stat-value" id="total-ventas">$0.00</div>
+                    <small id="trend-ventas"></small>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stat-card">
+                    <div class="stat-label">🛒 Número de Ventas</div>
+                    <div class="stat-value" id="numero-ventas">0</div>
+                    <small class="text-muted">Transacciones</small>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stat-card">
+                    <div class="stat-label">📈 Ticket Promedio</div>
+                    <div class="stat-value" id="promedio-venta">$0.00</div>
+                    <small class="text-muted">Por venta</small>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stat-card">
+                    <div class="stat-label">📦 Productos Vendidos</div>
+                    <div class="stat-value" id="productos-vendidos">0</div>
+                    <small class="text-muted">Unidades totales</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Ventas por Hora -->
+        <div class="chart-container">
+            <h3 class="mb-4">🕐 Ventas por Hora</h3>
+            <div id="ventas-hora-container"></div>
+        </div>
+
+        <!-- Productos Más Vendidos -->
+        <div class="chart-container">
+            <h3 class="mb-4">⭐ Top 5 Productos Más Vendidos</h3>
+            <div id="productos-top"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+console.log('🚀 Script iniciado');
+
+// Mostrar fecha actual
+const opciones = { 
+    weekday: 'long', 
+    year: 'numeric', 
+    month: 'long', 
+    day: 'numeric' 
+};
+const fechaElement = document.getElementById('fecha-actual');
+if (fechaElement) {
+    fechaElement.textContent = new Date().toLocaleDateString('es-MX', opciones);
+}
+
+async function cargarDatos() {
+    console.log('📥 Iniciando carga de datos...');
+    
+    const loading = document.getElementById('loading');
+    const content = document.getElementById('dashboard-content');
+    const errorDiv = document.getElementById('error');
+    
+    loading.style.display = 'block';
+    content.style.display = 'none';
+    errorDiv.style.display = 'none';
+
+    try {
+        console.log('🌐 Haciendo fetch a /api/dashboard-data/');
+        const response = await fetch('/api/dashboard-data/');
+        
+        console.log('📡 Response status:', response.status);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        console.log('✅ Datos recibidos:', data);
+        
+        // Actualizar stats cards
+        document.getElementById('total-ventas').textContent = '$' + data.totalVentas.toFixed(2);
+        document.getElementById('numero-ventas').textContent = data.numeroVentas;
+        document.getElementById('promedio-venta').textContent = '$' + data.promedioVenta.toFixed(2);
+        
+        const totalProductos = data.productosMasVendidos.reduce((sum, p) => sum + p.cantidad, 0);
+        document.getElementById('productos-vendidos').textContent = totalProductos;
+        
+        // Tendencia
+        const trendElement = document.getElementById('trend-ventas');
+        const trend = data.comparacionDiaAnterior;
+        if (trend !== 0) {
+            const clase = trend > 0 ? 'trend-up' : 'trend-down';
+            const simbolo = trend > 0 ? '↑' : '↓';
+            trendElement.className = clase;
+            trendElement.innerHTML = `<strong>${simbolo} ${Math.abs(trend).toFixed(1)}%</strong> vs ayer`;
+        } else {
+            trendElement.innerHTML = '<span class="text-muted">Sin comparación</span>';
+        }
+        
+        // Ventas por hora
+        renderVentasPorHora(data.ventasPorHora);
+        
+        // Productos top
+        renderProductosTop(data.productosMasVendidos);
+        
+        loading.style.display = 'none';
+        content.style.display = 'block';
+        console.log('✅ Dashboard renderizado correctamente');
+        
+    } catch (error) {
+        console.error('❌ Error al cargar datos:', error);
+        loading.style.display = 'none';
+        errorDiv.style.display = 'block';
+        errorDiv.innerHTML = `
+            <h4>❌ Error al cargar datos</h4>
+            <p><strong>Error:</strong> ${error.message}</p>
+            <p><strong>URL:</strong> /api/dashboard-data/</p>
+            <button onclick="cargarDatos()" class="btn btn-primary mt-2">
+                🔄 Reintentar
+            </button>
+            <hr>
+            <p class="mb-0"><small>Revisa la consola del navegador (F12) para más detalles.</small></p>
+        `;
+    }
+}
+
+function renderVentasPorHora(ventas) {
+    console.log('📊 Renderizando ventas por hora:', ventas);
+    const container = document.getElementById('ventas-hora-container');
+    
+    if (!ventas || ventas.length === 0) {
+        container.innerHTML = '<p class="text-muted text-center py-4">No hay ventas registradas hoy</p>';
+        return;
+    }
+    
+    const maxTotal = Math.max(...ventas.map(v => v.total));
+    
+    let html = '<div class="row g-2">';
+    ventas.forEach(v => {
+        const porcentaje = maxTotal > 0 ? (v.total / maxTotal * 100) : 0;
+        html += `
+            <div class="col-12">
+                <div class="d-flex align-items-center mb-2">
+                    <div style="min-width: 60px;">
+                        <strong>${v.hora}</strong>
+                    </div>
+                    <div class="flex-grow-1 mx-3">
+                        <div class="progress" style="height: 30px;">
+                            <div class="progress-bar" 
+                                 style="width: ${porcentaje}%; background: linear-gradient(90deg, #667eea, #764ba2);"
+                                 role="progressbar">
+                                ${v.ventas} ${v.ventas === 1 ? 'venta' : 'ventas'}
+                            </div>
+                        </div>
+                    </div>
+                    <div style="min-width: 80px; text-align: right;">
+                        <strong>$${v.total.toFixed(2)}</strong>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    html += '</div>';
+    
+    container.innerHTML = html;
+}
+
+function renderProductosTop(productos) {
+    console.log('🏆 Renderizando productos top:', productos);
+    const container = document.getElementById('productos-top');
+    
+    if (!productos || productos.length === 0) {
+        container.innerHTML = '<p class="text-muted text-center py-4">No hay productos vendidos hoy</p>';
+        return;
+    }
+    
+    const colores = ['#667eea', '#764ba2', '#f093fb', '#4facfe', '#43e97b'];
+    
+    let html = '';
+    productos.forEach((p, i) => {
+        html += `
+            <div class="product-row">
+                <div class="d-flex align-items-center flex-grow-1">
+                    <div class="me-3">
+                        <div style="width: 40px; height: 40px; border-radius: 10px; 
+                                    background: ${colores[i]}; color: white; 
+                                    display: flex; align-items: center; justify-content: center;
+                                    font-weight: bold; font-size: 1.2rem;">
+                            ${i + 1}
+                        </div>
+                    </div>
+                    <div class="flex-grow-1">
+                        <strong class="d-block">${p.nombre}</strong>
+                        <small class="text-muted">${p.cantidad} unidades vendidas</small>
+                    </div>
+                </div>
+                <div class="ms-4 text-end">
+                    <strong style="font-size: 1.3rem; color: ${colores[i]};">$${p.ingresos.toFixed(2)}</strong>
+                </div>
+            </div>
+        `;
+    });
+    
+    container.innerHTML = html;
+}
+
+// Cargar datos al inicio
+console.log('🎬 Ejecutando cargarDatos()...');
+cargarDatos();
+
+// Auto-actualizar cada 30 segundos
+setInterval(() => {
+    console.log('🔄 Auto-actualizando dashboard...');
+    cargarDatos();
+}, 30000);
+</script>
+{% endblock %}
